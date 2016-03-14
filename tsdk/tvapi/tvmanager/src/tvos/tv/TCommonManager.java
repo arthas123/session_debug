@@ -8,7 +8,6 @@ import android.os.RemoteException;
 import tvos.tv.TUtils;
 import java.lang.Integer;
 
-import com.tcl.tvmanager.IAtvPlayerEventCallback;
 import com.tcl.tvmanager.IInputSourceSwitchCallback;
 import com.tcl.tvmanager.ITVSignalCallBack;
 import com.tcl.tvmanager.listener.TVSourceListener;
@@ -31,12 +30,8 @@ import com.tcl.tvmanager.vo.EnTCLProjectType;
 import com.tcl.tvmanager.vo.EnTCLWindow;
 import com.tcl.tvmanager.vo.EnTCLCallBackTvStatusMsg;
 import com.tcl.tvmanager.vo.EnTCLCallBackSetSourceMsg;
-import com.tcl.tvmanager.aidl.ITvPlayerProxy;
 import com.tcl.tvmanager.aidl.ITvChannelProxy;
 import com.tcl.tvmanager.vo.EnTCLLocation;
-import com.tcl.tvmanager.ITOTUpdateCallBack;
-import com.tcl.tvmanager.IAudioLanguageListener;
-import com.tcl.tvmanager.ITclTvService;
 import com.tcl.tvservice.proxy.TvPlayerProxy;
 import android.view.SurfaceHolder;
 import android.view.Surface;
@@ -47,77 +42,82 @@ import java.util.ArrayList;
 import tvos.tv.TManager;
 import com.tcl.utility.property.PropertyImpl;
 import com.tcl.tosapi.atv.TvVideoApi;
-import tvos.tv.event.ITypedEventListener;
-import tvos.tv.event.ITEventRegister;
+import tvos.tv.common.ITypedEventListener;
+import tvos.tv.common.ITEventRegister;
 import tvos.tv.TManager;
 import com.tcl.tosapi.listener.EventNotify;
+import com.tcl.tvmanager.listener.THandlerAddCallback;
 
-public class TCommonManager {
+public class TCommonManager implements THandlerAddCallback{
     private static final String TAG = "TCommonManager";
     private Context mContext;
-    private ITclTvService mService;
 
     private static TCommonManager sInstance = null;
 
     private TVSignalCallBack mTVSignalCallBack;
     private TVSourceListener mTVSourceListener;
-    private TOTUpdateCallBack mTOTUpdateCallBack;
-    private InputSourceSwitchCallback mInputSourceSwitchCallback;
-    private AtvPlayerEventCallback mAtvPlayerEventCallback;
+    //private InputSourceSwitchCallback mInputSourceSwitchCallback;
 
     private TvPlayerProxy tvPlayerProxy;
     private TvPlayerApi tvPlayerApi;
-    private ITvChannelProxy mIChannelProxy;
-    private AudioLanguageListener mAudioLangListener;
 	private PropertyImpl mProperty;
 	private TvVideoApi mVideoApi;
 	private ITEventRegister mTEventRegister;
 	private int mListenerId0 = 0;
 	private int mListenerId1 = 0;
 	private int mListenerId2 = 0;
-	
+	private int mListenerId3 = 0;
+	private int mListenerId4 = 0;
+	private CommonEventListener dtvCommonEventListener;
+	private boolean bListenerRegistered = false;
+	private TManager mTManager;
     private TCommonManager(Context context) throws Exception {
-        mService = TManager.getInstance(context).getTvService();
         mContext = context;
+        mTManager = TManager.getInstance(context);
         mProperty = PropertyImpl.getInstance(context);
-        try {
-            mIChannelProxy = mService.getTvChannelProxy();
-            tvPlayerProxy = TvPlayerProxy.getInstance(context);
-        } catch (RemoteException e) {
-            e.printStackTrace();
-            TUtils.logd(TAG, "getTvPlayerProxy error!!!");
-        }
-
-        //initInputSourceSwitchCallback();
-        //initAtvPlayerEventCallback();
-        initAudioLangListener();
-        if(mTOTUpdateCallBack == null) {
-            try {
-                mTOTUpdateCallBack = new TOTUpdateCallBack();
-                mIChannelProxy.registerTOTUpdateListener(mTOTUpdateCallBack);
-            } catch (RemoteException e) {
-                e.printStackTrace();
-            }
-        }
 		tvPlayerApi = TvPlayerApi.getInstance();
 		mVideoApi = TvVideoApi.getInstance();
-        CommonEventListener dtvCiEventListener = new CommonEventListener();
-		mTEventRegister = TManager.getInstance(null).getEventRegister();
+        dtvCommonEventListener = new CommonEventListener();
+		tvPlayerProxy = TvPlayerProxy.getInstance(mContext);
+		mTManager.addHanderAddedCallback(TUtils.MESSAGE_TYPE_STATUS_UPDATE,this);
+		mTManager.addHanderAddedCallback(TUtils.MESSAGE_TYPE_SOURCE_CHANGED,this);
+		mTManager.addHanderAddedCallback(TUtils.MESSAGE_TYPE_TOT_UPDATE_EVENT,this);
+		mTManager.addHanderAddedCallback(TUtils.MESSAGE_TYPE_SET_SOURCE,this);
+    }
+	@Override
+	public void onHanderAdded(int messageType){
+		if(mTEventRegister == null){
+			mTEventRegister = TManager.getInstance(null).getEventRegister();
+		}
+        TUtils.logd(TAG,"onHanderAdded()messageType="+messageType+"mTEventRegister="+mTEventRegister);
 		if(mTEventRegister != null){
 			try{
-				mListenerId0 = mTEventRegister.registerEventListener(EventNotify.INPUT_SOURCE_CHANGED_EVENT,dtvCiEventListener);
-				mListenerId1 = mTEventRegister.registerEventListener(EventNotify.OUTPUT_SIGANL_STATUS_EVENT,dtvCiEventListener);
-				mListenerId2 = mTEventRegister.registerEventListener(EventNotify.SOURCE_SWITCH_EVENT,dtvCiEventListener);
+				if(messageType == TUtils.MESSAGE_TYPE_STATUS_UPDATE){
+					if(mListenerId0 == 0){
+						mListenerId0 = mTEventRegister.registerEventListener(EventNotify.INPUT_SOURCE_CHANGED_EVENT,dtvCommonEventListener);
+					}
+					if(mListenerId1 == 0){
+						mListenerId1 = mTEventRegister.registerEventListener(EventNotify.OUTPUT_SIGANL_STATUS_EVENT,dtvCommonEventListener);
+					}
+					if(mListenerId4 == 0){
+						mListenerId4 = mTEventRegister.registerEventListener(EventNotify.AUDIO_LANG_UPDATE,dtvCommonEventListener);
+					}
+				}
+				else if(messageType == TUtils.MESSAGE_TYPE_SOURCE_CHANGED || messageType == TUtils.MESSAGE_TYPE_SET_SOURCE){
+					if(mListenerId2 == 0){
+						mListenerId2 = mTEventRegister.registerEventListener(EventNotify.SOURCE_SWITCH_EVENT,dtvCommonEventListener);
+					}
+				}
+				else if(messageType == TUtils.MESSAGE_TYPE_TOT_UPDATE_EVENT){
+					if(mListenerId3 == 0){
+						mListenerId3 = mTEventRegister.registerEventListener(EventNotify.DTV_TOT_UPDATE,dtvCommonEventListener);
+					}
+				}
 			}catch(Exception e){
 			}
 		}
-    }
-    /* === Common === [[ */
-    /**
-     * get current Input Source
-     * @return source mode  @see EnTCLInputSource
-     */
-    // TODO aidl中修改为getCurrentInputSource
+	}
+	
     public EnTCLInputSource getCurrentInputSource() {
         EnTCLInputSource source = EnTCLInputSource.EN_TCL_NONE;
         try {
@@ -129,7 +129,7 @@ public class TCommonManager {
             e.printStackTrace();
         }
 
-        TUtils.logd(TAG,"getCurrentInputSource : " + source);
+        TUtils.logd(TAG,"getCurrentInputSource()=" + source);
         return source;
     }
 
@@ -148,8 +148,8 @@ public class TCommonManager {
         return ret;
     }
 
-    public int setInputSource(int session_id,EnTCLInputSource inputSource,boolean issave) {
-		mVideoApi.setInputSourceWithSession(session_id, inputSource.ordinal(), issave);
+    public int setInputSource(int session_id,EnTCLInputSource inputSource) {
+		mVideoApi.setInputSourceWithSession(session_id, inputSource.ordinal(), true);
 		return 0;
     }
 
@@ -324,16 +324,6 @@ public class TCommonManager {
         return tvPlayerProxy.getSignalStatus(window);
     }
 
-    private class TOTUpdateCallBack extends ITOTUpdateCallBack.Stub {
-        @Override
-        public void OnToTUpdate() {
-            TUtils.logd(TAG,"rengb******TOTUpdateCallBack,TCommonManager");
-            Message msg = Message.obtain();
-            msg.what = EnTCLCallBackTvStatusMsg.EN_TCL_TOT_UPDATE.ordinal();
-            TManager.getInstance(mContext).sendMessage(TUtils.MESSAGE_TYPE_TOT_UPDATE_EVENT,msg);
-        }
-    }
-
     private class  TVSignalCallBack extends ITVSignalCallBack.Stub {
         @Override
         public void onOutputSignalStatus(int windowId, boolean signalStatus) throws RemoteException
@@ -365,12 +355,12 @@ public class TCommonManager {
                 TUtils.logd(TAG,"registerInputSourceSwitchCallback remote exception...");
             }
         }
-    }*/
+    }
 
     private class InputSourceSwitchCallback extends IInputSourceSwitchCallback.Stub {
 
         @Override
-        public void onSwitch(/*EnTCLInputSource*/int targetSource, /*EnTCLInputSourceSwitchResult*/int result)
+        public void onSwitch(int targetSource,int result)
         throws RemoteException {
             TUtils.logd(TAG,"TvService call IInputSourceSwitchCallback.Stub, onSwitch...");
             int what = -1;
@@ -387,18 +377,7 @@ public class TCommonManager {
 
         }
     }
-
-    private void initAtvPlayerEventCallback() {
-        TUtils.logd(TAG,"initAtvPlayerEventCallback...");
-        if (mAtvPlayerEventCallback == null) {
-            mAtvPlayerEventCallback = new AtvPlayerEventCallback();
-            try {
-                mIChannelProxy.registerAtvPlayerEventCallback("tcl", mAtvPlayerEventCallback);
-            } catch (RemoteException e) {
-                TUtils.logd(TAG,"registerAtvPlayerEventCallback remote exception...");
-            }
-        }
-    }
+	*/
 
     private class CommonEventListener extends ITypedEventListener.Stub {
 
@@ -459,13 +438,23 @@ public class TCommonManager {
 				message.what = TUtils.MESSAGE_TYPE_SOURCE_CHANGED;
 				TManager.getInstance(mContext).sendMessage(TUtils.MESSAGE_TYPE_SOURCE_CHANGED,message);
             }
+            else if(EventNotify.DTV_TOT_UPDATE == eventType){
+	            Message msg = Message.obtain();
+	            msg.what = EnTCLCallBackTvStatusMsg.EN_TCL_TOT_UPDATE.ordinal();
+	            TManager.getInstance(mContext).sendMessage(TUtils.MESSAGE_TYPE_TOT_UPDATE_EVENT,msg);
+            }
+            else if(EventNotify.AUDIO_LANG_UPDATE == eventType){
+				Message msg = Message.obtain();
+				msg.what = EnTCLCallBackTvStatusMsg.EN_TCL_AUDIO_LANGUAGE_INFO_UPDATED.ordinal();
+				TManager.getInstance(mContext).sendMessage(TUtils.MESSAGE_TYPE_STATUS_UPDATE,msg);
+            }
         }
 
     }
 
-    private class AtvPlayerEventCallback extends IAtvPlayerEventCallback.Stub {
+    /*private class AtvPlayerEventCallback extends IAtvPlayerEventCallback.Stub {
         @Override
-        public void onInputSignalChanged(/*EnTCLInputSource*/int source, boolean hasSignal) {
+        public void onInputSignalChanged(int source, boolean hasSignal) {
             TUtils.logd(TAG,"TvService call IAtvPlayerEventCallback.Stub, onInputSignalChanged...source:" +
                         source + ",hasSignal:" + hasSignal);
             int what;
@@ -481,7 +470,7 @@ public class TCommonManager {
         }
 
         @Override
-        public void onSignalStatusChanged(/*EnTCLInputSource*/int currentSource, /*EnTCLSignalStatus*/int currentSignalStatus) {
+        public void onSignalStatusChanged(int currentSource, int currentSignalStatus) {
             TUtils.logd(TAG,"TvService call IAtvPlayerEventCallback.Stub, onSignalStatusChanged...currentSource:" +
                         currentSource + ", currentSignalStatus:" + currentSignalStatus);
             int what = -1;
@@ -508,7 +497,7 @@ public class TCommonManager {
             TManager.getInstance(mContext).sendMessage(TUtils.MESSAGE_TYPE_STATUS_UPDATE,signalLockMessage);
         }
         
-    }
+    }*/
     /**
      * set ChildrenMode
      * @param enabled : boolean
@@ -727,33 +716,13 @@ public class TCommonManager {
     public boolean setSignalBridgeTiming(EnTCLBridgeTiming bridgeTiming) {
         return tvPlayerApi.setSignalBridgeTiming(bridgeTiming.ordinal());
     }
-    private void initAudioLangListener() {
-        TUtils.logd(TAG,"initAudioLangListener...");
-        if (mAudioLangListener == null) {
-            mAudioLangListener = new AudioLanguageListener();
-            try {
-                mIChannelProxy.registerAudioLangListener("tcl", mAudioLangListener);
-            } catch (RemoteException e) {
-                TUtils.logd(TAG,"registerAudioLangListener remote exception...");
-            }
-        }
-    }
-    private class AudioLanguageListener extends IAudioLanguageListener.Stub {
 
-        public void onAudioLangUpdate() {
-            //TUtils.logd(TAG,"TvService call IAudioLanguageListener.Stub, OnAudioLangUpdate...");
-            Message msg = Message.obtain();
-            msg.what = EnTCLCallBackTvStatusMsg.EN_TCL_AUDIO_LANGUAGE_INFO_UPDATED.ordinal();
-            TManager.getInstance(mContext).sendMessage(TUtils.MESSAGE_TYPE_STATUS_UPDATE,msg);
-        }
-    }
-	
     public boolean setHdmiEdidVer(EnTCLInputSource inputSource, EnTCLEdidVersion version) {
         int ret = -1;
         if(tvPlayerApi != null) {
             ret = tvPlayerApi.setHdmiEdidVer(inputSource.ordinal(), version);
         }
-        return (ret == 0) ? true : false;
+        return (ret > 0) ? true : false;
     }
 	@Override
 	protected void finalize() throws Throwable{
@@ -762,6 +731,8 @@ public class TCommonManager {
 				mTEventRegister.unregisterListener(mListenerId0);
 				mTEventRegister.unregisterListener(mListenerId1);
 				mTEventRegister.unregisterListener(mListenerId2);
+				mTEventRegister.unregisterListener(mListenerId3);
+				mTEventRegister.unregisterListener(mListenerId4);
 			}catch(Exception e){
 			}
 		}

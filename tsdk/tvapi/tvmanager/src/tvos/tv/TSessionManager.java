@@ -23,9 +23,10 @@ import com.tcl.tvmanager.TTvCommonManager;
 import java.util.HashMap;
 import java.lang.Integer;
 import com.tcl.tosapi.atv.TvVideoApi;
-import tvos.tv.event.ITypedEventListener;
-import tvos.tv.event.ITEventRegister;
+import tvos.tv.common.ITypedEventListener;
+import tvos.tv.common.ITEventRegister;
 import com.tcl.tosapi.listener.EventNotify;
+import tvos.tv.channel.TChannelManager;
 
 public class TSessionManager {
     private static final String TAG = "TSessionManager";
@@ -80,34 +81,40 @@ public class TSessionManager {
     }
 	public int createClient(int source_type) {
 		//TClientSession ret = null;
-		
+		TUtils.logd(TAG, "Begin to creat Client........");
 		int clientId = mTvVideoApi.createSession(source_type);
 		
 		/*
 		if(clientId > 0){
-			ret = new TClientSession(source_type,clientId,mChannelManager);
+			ret = new TClientSession(source_type,clientId);
 			mClientSessionIDMap.put(Integer.valueOf(clientId),ret);
 		}
 		*/
-		
+		TUtils.logd(TAG, "Session Client created!!!id = "+clientId);
 		return clientId;
 	}
 
 	public int destoryClient(int session_id) {
 		int ret = -1;
+		TUtils.logd(TAG, "Destroy Client........");
 		ret = mTvVideoApi.destorySession(session_id);
 		//mClientSessionIDMap.remove(Integer.valueOf(client.getSessiontId()));
-		
+
+		TUtils.logd(TAG, "Destroy Client success!");
 		return ret;
 	}
 
 	public int requestSession(int session_id){
+		TUtils.logd(TAG, "Request Session........");
 		mTvVideoApi.requestSession(session_id);
+		TUtils.logd(TAG, "Session Requested!!!!");
 		return 0;
 	}
 
 	public void releaseSession(int session_id){
+		TUtils.logd(TAG, "Release Session........");
 		mTvVideoApi.releaseSession(session_id);
+		TUtils.logd(TAG, "Session Released!!!!");
 	}
 	
 	@Override
