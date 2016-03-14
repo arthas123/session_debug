@@ -3,6 +3,9 @@
 #include "app_user_setting.h"
 #include "app_input_source.h"
 #include "app_channel.h"
+#include "app_channel_dtv_scan.h"
+#include "app_channel_atv_scan.h"
+#include "tos_dtv_scan.h"
 #include "tos_androidHandler.h"
 #include "tos_handleHelper.h"
 #include <stdio.h>
@@ -28,7 +31,6 @@ SET_MODEL_ID(SITA_MODULE_LINEIN);
 #define DBG_SRC_ERROR(fmt, arg...)         fpi_err((char *)fmt, ##arg)
 
 //static session_info *session_pool_addr;
-
 static uint32_t ui_input_soure_mapping[][2]=
 {
     {E_INPUT_ATV, FPI_LINEIN_CATV},
@@ -91,7 +93,7 @@ static fpi_error tos_source_set_input_v1(EN_API_SOURCE_INPUT input,EN_ACT_CTRL a
             }
         }
     }
-   
+    fpi_set_target_linein(linein);
     if( act == EN_ACT_EXEC_SAVE)
 	{
         fpi_trace("EN_ACT_EXEC_SAVE\n");
@@ -147,6 +149,7 @@ static fpi_error tos_source_set_input_v1(EN_API_SOURCE_INPUT input,EN_ACT_CTRL a
     if( act == EN_ACT_EXEC )
     {
         fpi_info("%s EN_ACT_EXEC! s_current_linein is not equal to the value of db \n",__FUNCTION__);
+		app_set_pre_input_source(linein);
         fpi_linein_changeto(linein) ;
 		app_notify_event(APP_NOTIFY_LINEIN_CHANGE_FINISH, 0, 0);
     }
@@ -184,7 +187,7 @@ static fpi_error tos_source_set_input_v2(EN_API_SOURCE_INPUT input,EN_ACT_CTRL a
             }
         }
     }
-
+	fpi_set_target_linein(linein);
 	switch(act)
 	{
 		case EN_ACT_EXEC_SAVE:
@@ -195,7 +198,12 @@ static fpi_error tos_source_set_input_v2(EN_API_SOURCE_INPUT input,EN_ACT_CTRL a
 		case EN_ACT_EXEC :
 			{
 				fpi_info("%s EN_ACT_EXEC! s_current_linein is not equal to the value of db \n",__FUNCTION__);
-				return fpi_linein_changeto_v2(linein);
+				fpi_linein_t current_linein ;
+    			fpi_linein_get_current(&current_linein);
+				fpi_error ret = app_set_input_source_v2(linein);
+				app_save_db_lastest_linein(current_linein);
+        		app_save_db_current_linein(current_linein);
+				return ret;
 			}break;
 		case EN_ACT_SAVE : 
 			{
@@ -217,6 +225,15 @@ fpi_error tos_source_set_input(EN_API_SOURCE_INPUT input,EN_ACT_CTRL act)
 	struct timespec times;
     struct timespec times2;
 	int ms;
+	
+		    // stop scan if is scaning
+    if(app_channel_dtv_is_scan() || app_channel_atv_is_scan())
+    { // stop scan
+    	
+        fpi_error tmp = tos_tv_scan_stop(E_FPI_DTV_STREAM_PORT_0);
+	 fpi_info("function = %s, line = %d,tos_tv_scan_stop = %d\n",__FUNCTION__,__LINE__,tmp);
+    }
+	
 	clock_gettime(CLOCK_MONOTONIC, &times);
 	if( sys_cfg_get_model_version(SITA_MODULE_LINEIN) == 2 )
 	{
@@ -263,7 +280,7 @@ fpi_error tos_source_get_input(EN_SOURCE_SAVE_TYPE type,EN_API_SOURCE_INPUT *val
         
     }
 
-    if( type == EN_SOURCE_LASTEST )
+   else if( type == EN_SOURCE_LASTEST )
     {
         fpi_trace(" enter %s,line = %d\n",__FUNCTION__,__LINE__);
         int i = 0;
@@ -282,6 +299,22 @@ fpi_error tos_source_get_input(EN_SOURCE_SAVE_TYPE type,EN_API_SOURCE_INPUT *val
         DBG_SRC("return success\n");
         return FPI_ERROR_SUCCESS;
     }
+
+	else
+	{
+		int i;
+		fpi_linein_t linein = fpi_get_target_linein();
+		for(i = 0; i < E_INPUT_NUM; ++i)
+        {
+            if(linein == (fpi_linein_t)ui_input_soure_mapping[i][1])
+            {
+                
+                *value = (EN_API_SOURCE_INPUT)ui_input_soure_mapping[i][0];
+                DBG_SRC(" last saved source = %d \n",*value );
+                break;
+            }
+        } 
+	}
 return FPI_ERROR_SUCCESS;
 }
 
@@ -389,7 +422,7 @@ fpi_error tos_source_request(uint32_t session_id)
 	if(session_pool_addr[session_id].session_status != SESSION_DESTROYED)
 	{
 		session_pool_addr[session_id].session_status = SESSION_REQUESTED;
-		app_notify_event(CMD_UI_NOTIFY_SESSION,session_id,1);    //第三个参数1 代表session已申请，控制权已被抢占
+		//app_notify_event(CMD_UI_NOTIFY_SESSION,session_id,1);    //第三个参数1 代表session已申请，控制权已被抢占
 		return FPI_ERROR_SUCCESS;
 	}
 
@@ -399,13 +432,14 @@ fpi_error tos_source_request(uint32_t session_id)
 
 fpi_error tos_source_release(uint32_t session_id)
 {
-	session_info *session_pool_addr;
-	fpi_info("Enter %s, line %d\n",__FUNCTION__, __LINE__);
+	//session_id = 0;
+	//session_info *session_pool_addr;
+	fpi_info("Enter %s, line %d, session_id = %d\n",__FUNCTION__, __LINE__,session_id);
 	
-	get_session_pool_addr(&session_pool_addr);
+	//get_session_pool_addr(&session_pool_addr);
 	
-	session_pool_addr[session_id].session_status = SESSION_RELEASED;
-	app_notify_event(CMD_UI_NOTIFY_SESSION,session_id,0);    //第三个参数0表示session已释放
+	//session_pool_addr[session_id].session_status = SESSION_RELEASED;
+	//app_notify_event(CMD_UI_NOTIFY_SESSION,session_id,0);    //第三个参数0表示session已释放
 
 	fpi_info("Exit %s, line %d\n",__FUNCTION__, __LINE__);
 	return FPI_ERROR_SUCCESS;
@@ -422,10 +456,12 @@ fpi_error tos_source_set_input_with_session(uint32_t session_id,EN_API_SOURCE_IN
 	if((session_pool_addr[session_id].session_status == SESSION_REQUESTED) && (session_pool_addr[session_id].source_type == SESSION_TYPE_INPUT_SOURCE))
 	{
 		ret = tos_source_set_input_v1(input,act);	
+		/*
 		if(FPI_ERROR_SUCCESS == ret)
 		{
 			app_notify_event(CMD_UI_NOTIFY_SESSION, session_id, 2);    //第三个参数2 表示这个session用完了，可以释放了
 		}
+		*/
 	}
 
 	fpi_info("Exit %s, line %d\n",__FUNCTION__, __LINE__);
