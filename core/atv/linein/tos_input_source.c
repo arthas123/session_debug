@@ -22,7 +22,7 @@
 #include "session.h"
 
 //extern session_info session_info_index[SESSION_NUM];
-
+//test notes
 SET_MODEL_ID(SITA_MODULE_LINEIN);
 
 //#define DBG_SRC fpi_trace
